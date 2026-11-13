@@ -1,0 +1,12 @@
+{
+  "base": null,
+  "parts": [
+    {
+      "first": "2026-11-13",
+      "last": "2026-11-13",
+      "path": "data/hitomi/2026/2026-11-13.db",
+      "sha256": "8904f0ac1d01d3ff40d64ee8fc0d4fcfa6b32b17a4ee36c2b87dca8b74440d07",
+      "size": 1781760
+    }
+  ]
+}
