@@ -10,28 +10,54 @@ use serde_json::Value;
 const CDN: &str = "https://ltn.gold-usergeneratedcontent.net";
 const THUMB_CDN: &str = "https://atn.gold-usergeneratedcontent.net";
 
+/// Small requests are bounded by connect/idle time plus a total cap; the
+/// multi-MB nozomi download overrides the total cap (slow but steady CDN
+/// paths from CI runners took over 30 s).
 pub fn client() -> Result<Client> {
     Ok(Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
-        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(60))
         .build()?)
 }
 
 /// Every gallery ID hitomi currently lists (`index-all.nozomi`: big-endian u32s).
 pub async fn nozomi_ids(client: &Client) -> Result<HashSet<i64>> {
+    let mut last_err = None;
+    for attempt in 1..=3 {
+        let started = std::time::Instant::now();
+        match nozomi_once(client).await {
+            Ok(bytes) => {
+                eprintln!("nozomi: {} bytes in {:.1?}", bytes.len(), started.elapsed());
+                let (ids, _) = bytes.as_chunks::<4>();
+                return Ok(ids.iter().map(|&c| u32::from_be_bytes(c) as i64).collect());
+            }
+            Err(e) => {
+                eprintln!(
+                    "nozomi attempt {attempt} failed after {:.1?}: {e:#}",
+                    started.elapsed()
+                );
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap())
+}
+
+async fn nozomi_once(client: &Client) -> Result<Vec<u8>> {
     let resp = client
         .get(format!("{CDN}/index-all.nozomi"))
         .header("Referer", "https://hitomi.la/")
         .header("Origin", "https://hitomi.la")
+        .timeout(Duration::from_secs(600))
         .send()
         .await
         .context("nozomi request")?;
     if !resp.status().is_success() {
         bail!("nozomi returned {}", resp.status());
     }
-    let bytes = resp.bytes().await.context("nozomi body")?;
-    let (ids, _) = bytes.as_chunks::<4>();
-    Ok(ids.iter().map(|&c| u32::from_be_bytes(c) as i64).collect())
+    Ok(resp.bytes().await.context("nozomi body")?.to_vec())
 }
 
 /// Gallery metadata in the dataset's column layout (multi-value fields as
