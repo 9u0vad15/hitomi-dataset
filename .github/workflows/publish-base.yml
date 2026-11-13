@@ -1,0 +1,55 @@
+name: publish-base
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dataset
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+
+      - name: Download state
+        run: |
+          gh release download state --pattern 'state.db*' --dir work
+          if [ -f work/state.db.zst ]; then zstd -d -f --rm work/state.db.zst -o work/state.db; fi
+
+      - name: Export base
+        run: ./target/release/hitomi-dataset export-base --state work/state.db --out work/base.db --repo .
+
+      # Versioned asset uploaded before base.json points at it; older assets
+      # are removed only after the new base.json is pushed.
+      - name: Upload base
+        run: |
+          asset=$(jq -r .asset base.json)
+          zstd -T0 -19 --rm work/base.db -o "work/$asset"
+          gh release view base >/dev/null 2>&1 || gh release create base --title base --notes "Client base snapshot; see base.json"
+          gh release upload base "work/$asset" --clobber
+
+      - name: Commit base.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add base.json manifest.json
+          git diff --cached --quiet || git commit -m "base: $(jq -r .through base.json)"
+          git push
+
+      - name: Remove older base assets
+        run: |
+          keep=$(jq -r .asset base.json)
+          gh release view base --json assets --jq '.assets[].name' | grep -vxF "$keep" | while read -r a; do
+            gh release delete-asset base "$a" --yes
+          done

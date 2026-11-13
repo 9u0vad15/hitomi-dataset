@@ -1,0 +1,49 @@
+name: daily
+
+on:
+  schedule:
+    - cron: "0 20 * * *" # 05:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dataset
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+
+      - name: Download state
+        run: |
+          gh release download state --pattern 'state.db*' --dir work
+          if [ -f work/state.db.zst ]; then zstd -d -f --rm work/state.db.zst -o work/state.db; fi
+
+      - name: Update
+        run: ./target/release/hitomi-dataset daily --state work/state.db --repo . --date "$(date -u +%F)"
+
+      # Parts first: if the state upload below fails, the next run replays the
+      # pushed parts onto the old state before doing its own work.
+      - name: Commit parts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data manifest.json
+          git diff --cached --quiet || git commit -m "data: $(date -u +%F)"
+          git push
+
+      - name: Upload state
+        run: |
+          zstd -T0 -10 --rm work/state.db -o work/state.db.zst
+          gh release upload state work/state.db.zst --clobber
+          gh release delete-asset state state.db --yes || true
