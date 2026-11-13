@@ -46,8 +46,9 @@ enum Cmd {
         /// Requests in flight.
         #[arg(long, default_value_t = 16)]
         concurrency: usize,
-        /// Galleries verified per run while never-checked Forbidden ones remain.
-        #[arg(long, default_value_t = 20_000)]
+        /// Galleries verified per run while never-checked Forbidden ones remain
+        /// (~127/s on a GitHub runner at concurrency 16: ~11 min).
+        #[arg(long, default_value_t = 80_000)]
         suspect_budget: usize,
         /// Galleries re-verified per run afterwards (~1.4M over 30 days).
         #[arg(long, default_value_t = 45_000)]

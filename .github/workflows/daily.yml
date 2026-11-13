@@ -20,29 +20,50 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --locked
+
+      # A day already published (e.g. a manual run earlier that UTC day) ends
+      # the job as a success; the remaining steps are skipped.
+      - name: Check date
+        id: day
+        run: |
+          today=$(date -u +%F)
+          echo "today=$today" >> "$GITHUB_OUTPUT"
+          last=$(jq -r '.parts[-1].last // ""' manifest.json 2>/dev/null || true)
+          if [ "$last" = "$today" ]; then
+            echo "$today already published; skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.day.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.day.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2
+      - if: steps.day.outputs.skip != 'true'
+        run: cargo build --release --locked
 
       - name: Download state
+        if: steps.day.outputs.skip != 'true'
         run: |
           gh release download state --pattern 'state.db*' --dir work
           if [ -f work/state.db.zst ]; then zstd -d -f --rm work/state.db.zst -o work/state.db; fi
 
       - name: Update
-        run: ./target/release/hitomi-dataset daily --state work/state.db --repo . --date "$(date -u +%F)"
+        if: steps.day.outputs.skip != 'true'
+        run: ./target/release/hitomi-dataset daily --state work/state.db --repo . --date "${{ steps.day.outputs.today }}"
 
       # Parts first: if the state upload below fails, the next run replays the
       # pushed parts onto the old state before doing its own work.
       - name: Commit parts
+        if: steps.day.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data manifest.json
-          git diff --cached --quiet || git commit -m "data: $(date -u +%F)"
+          git diff --cached --quiet || git commit -m "data: ${{ steps.day.outputs.today }}"
           git push
 
       - name: Upload state
+        if: steps.day.outputs.skip != 'true'
         run: |
           zstd -T0 -10 --rm work/state.db -o work/state.db.zst
           gh release upload state work/state.db.zst --clobber

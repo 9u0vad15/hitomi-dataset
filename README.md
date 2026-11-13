@@ -47,13 +47,13 @@ Each part has `galleries` (full rows: new galleries) and `states`
 ## Daily run (`.github/workflows/daily.yml`, 20:00 UTC)
 
 Published parts are never rewritten: a run whose date is not after the last
-published day fails (so a second run on the same UTC day fails harmlessly).
+published day fails; the workflow skips (as a success) a day already published.
 If an earlier run pushed its part but failed to upload the state, the next run
 first replays the newer parts onto the state.
 
 1. nozomi listing → set `kind`; refuse a listing < 90% of the Normal count.
 2. Fetch galleries listed but missing (failures are retried next run).
-3. Verify: never-checked Forbidden galleries first (20,000/run), then everything
+3. Verify: never-checked Forbidden galleries first (80,000/run), then everything
    by oldest check (45,000/run ≈ 30-day cycle). Undecided ones keep their status
    and come back in rotation. Fails if over half are undecided.
 4. Write the day's part, compact weeks/months, rewrite `manifest.json`.
@@ -72,5 +72,5 @@ first replays the newer parts onto the state.
    Without the zstd CLI, Python 3.14+ writes the same format:
    `python -c "import compression.zstd as z,shutil;shutil.copyfileobj(open('work/state.db','rb'),z.open('work/state.db.zst','wb',level=10))"`
 3. Run the `daily` workflow once by hand (Actions → daily → Run workflow);
-   the scheduled run later that UTC day then fails harmlessly.
-4. When the never-checked Forbidden backlog is done (~9 runs), run `publish-base`.
+   the scheduled run later that UTC day is skipped.
+4. When the never-checked Forbidden backlog is done (a few runs), run `publish-base`.
