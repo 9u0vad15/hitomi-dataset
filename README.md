@@ -44,7 +44,7 @@ Each part has `galleries` (full rows: new galleries) and `states`
    `UPDATE … SET kind, status` from `states`. Reapplying a part is harmless, so
    a merged week/month file may overlap days already applied.
 
-## Daily run (`.github/workflows/daily.yml`, 20:00 UTC)
+## Daily run (`.github/workflows/daily.yml`, 20:17 UTC; GitHub may start it hours late)
 
 Published parts are never rewritten: a run whose date is not after the last
 published day fails; the workflow skips (as a success) a day already published.

@@ -2,7 +2,7 @@ name: daily
 
 on:
   schedule:
-    - cron: "0 20 * * *" # 05:00 KST
+    - cron: "17 20 * * *" # 05:17 KST; GitHub delays top-of-hour schedules (hours under load)
   workflow_dispatch:
 
 permissions:
@@ -14,12 +14,12 @@ concurrency:
 
 jobs:
   daily:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # A day already published (e.g. a manual run earlier that UTC day) ends
       # the job as a success; the remaining steps are skipped.
