@@ -1,5 +1,11 @@
 {
-  "base": null,
+  "base": {
+    "asset": "base-2026-11-15.db.zst",
+    "release": "base",
+    "sha256": "fc72fafeefa41f9c2494dbef4d47128f3a4f689ec09cc6f60aebff54c6c15850",
+    "size": 464916480,
+    "through": "2026-11-15"
+  },
   "parts": [
     {
       "first": "2026-11-08",
