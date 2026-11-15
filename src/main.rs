@@ -40,7 +40,7 @@ enum Cmd {
         /// Data repository root (holds data/, manifest.json, base.json).
         #[arg(long)]
         repo: PathBuf,
-        /// Run date, YYYY-MM-DD (UTC).
+        /// Run date, YYYY-MM-DD (KST in the workflow).
         #[arg(long)]
         date: Day,
         /// Requests in flight.

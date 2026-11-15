@@ -21,12 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # A day already published (e.g. a manual run earlier that UTC day) ends
+      # Days are KST dates: the 05:17 KST schedule often starts hours late, and a
+      # UTC date would then land on the next day and skip it. A day already
+      # published (e.g. a manual run earlier that KST day) ends
       # the job as a success; the remaining steps are skipped.
       - name: Check date
         id: day
         run: |
-          today=$(date -u +%F)
+          today=$(TZ=Asia/Seoul date +%F)
           echo "today=$today" >> "$GITHUB_OUTPUT"
           last=$(jq -r '.parts[-1].last // ""' manifest.json 2>/dev/null || true)
           if [ "$last" = "$today" ]; then

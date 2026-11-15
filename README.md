@@ -44,7 +44,7 @@ Each part has `galleries` (full rows: new galleries) and `states`
    `UPDATE … SET kind, status` from `states`. Reapplying a part is harmless, so
    a merged week/month file may overlap days already applied.
 
-## Daily run (`.github/workflows/daily.yml`, 20:17 UTC; GitHub may start it hours late)
+## Daily run (`.github/workflows/daily.yml`, 05:17 KST; GitHub may start it hours late)
 
 Published parts are never rewritten: a run whose date is not after the last
 published day fails; the workflow skips (as a success) a day already published.
@@ -72,5 +72,5 @@ first replays the newer parts onto the state.
    Without the zstd CLI, Python 3.14+ writes the same format:
    `python -c "import compression.zstd as z,shutil;shutil.copyfileobj(open('work/state.db','rb'),z.open('work/state.db.zst','wb',level=10))"`
 3. Run the `daily` workflow once by hand (Actions → daily → Run workflow);
-   the scheduled run later that UTC day is skipped.
+   the scheduled run later that KST day is skipped. Part dates are KST dates.
 4. When the never-checked Forbidden backlog is done (a few runs), run `publish-base`.
