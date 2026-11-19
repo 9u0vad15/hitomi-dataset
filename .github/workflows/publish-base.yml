@@ -1,6 +1,8 @@
 name: publish-base
 
 on:
+  schedule:
+    - cron: "47 2 1 * *" # monthly, the 1st 11:47 KST: between two daily runs, after the month merge
   workflow_dispatch:
 
 permissions:

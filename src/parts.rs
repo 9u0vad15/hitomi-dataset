@@ -1,5 +1,6 @@
 //! Change files ("parts") under `data/hitomi/{year}/`, and their compaction:
-//! one file per day, the days 1–7 / 8–14 / 15–21 / 22–28 of the current
+//! one file per run (named by its start hour), the runs of a day merged into
+//! a day file once the day is over, the days 1–7 / 8–14 / 15–21 / 22–28 of the current
 //! month merged into week files once the week is over, and every past month
 //! merged into one month file — a finished year holds `YYYY-01.db` … `YYYY-12.db`.
 //!
@@ -29,6 +30,8 @@ pub enum Span {
     /// Week `n` (1–4) covers days `7n-6 ..= 7n`.
     Week(u32),
     Day(u32),
+    /// One run: `(day, hour)` of its start.
+    Hour(u32, u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,11 +42,20 @@ pub struct PartName {
 }
 
 impl PartName {
+    #[cfg(test)]
     pub fn day(d: Day) -> Self {
         Self {
             year: d.year,
             month: d.month,
             span: Span::Day(d.day),
+        }
+    }
+
+    pub fn hour(d: Day, hour: u32) -> Self {
+        Self {
+            year: d.year,
+            month: d.month,
+            span: Span::Hour(d.day, hour),
         }
     }
 
@@ -53,6 +65,7 @@ impl PartName {
             Span::Month => format!("{y:04}-{m:02}.db"),
             Span::Week(w) => format!("{y:04}-{m:02}-w{w}.db"),
             Span::Day(d) => format!("{y:04}-{m:02}-{d:02}.db"),
+            Span::Hour(d, h) => format!("{y:04}-{m:02}-{d:02}-h{h:02}.db"),
         }
     }
 
@@ -66,11 +79,17 @@ impl PartName {
             Some(w) if w.starts_with('w') => {
                 Span::Week(w[1..].parse().ok().filter(|w| (1..=4).contains(w))?)
             }
-            Some(d) => Span::Day(
-                d.parse()
+            Some(rest) => {
+                let (d, h) = match rest.split_once("-h") {
+                    Some((d, h)) => (d, Some(h.parse().ok().filter(|h| *h < 24)?)),
+                    None => (rest, None),
+                };
+                let d = d
+                    .parse()
                     .ok()
-                    .filter(|d| (1..=days_in_month(year, month)).contains(d))?,
-            ),
+                    .filter(|d| (1..=days_in_month(year, month)).contains(d))?;
+                h.map_or(Span::Day(d), |h| Span::Hour(d, h))
+            }
         };
         let part = Self { year, month, span };
         (part.file_name() == name).then_some(part)
@@ -81,7 +100,7 @@ impl PartName {
         match self.span {
             Span::Month => (1, days_in_month(self.year, self.month)),
             Span::Week(w) => (7 * w - 6, 7 * w),
-            Span::Day(d) => (d, d),
+            Span::Day(d) | Span::Hour(d, _) => (d, d),
         }
     }
 
@@ -91,6 +110,15 @@ impl PartName {
 
     fn last_date(&self) -> String {
         self.date(self.days().1)
+    }
+
+    /// `YYYY-MM-DDThh` of the last run the part can hold; stamps order runs.
+    pub fn stamp(&self) -> String {
+        let hour = match self.span {
+            Span::Hour(_, h) => h,
+            _ => 23,
+        };
+        format!("{}T{hour:02}", self.last_date())
     }
 
     fn path(&self, parts_root: &Path) -> PathBuf {
@@ -119,10 +147,9 @@ fn apply_sql() -> String {
     )
 }
 
-/// Write the changes of `day` from the state DB (ID lists in `temp.full_ids` /
-/// `temp.state_ids`) into a new part. A published part is never rewritten.
-pub fn write_day(state: &Connection, parts_root: &Path, day: Day) -> Result<PathBuf> {
-    let name = PartName::day(day);
+/// Write the changes of this run from the state DB (ID lists in `temp.full_ids` /
+/// `temp.state_ids`) into the new part `name`. A published part is never rewritten.
+pub fn write_part(state: &Connection, parts_root: &Path, name: PartName) -> Result<PathBuf> {
     let path = name.path(parts_root);
     if path.exists() {
         bail!("{} already exists", path.display());
@@ -211,8 +238,8 @@ fn list_parts(parts_root: &Path) -> Result<Vec<(PartName, PathBuf)>> {
     Ok(parts)
 }
 
-/// Merge finished weeks of `today`'s month into week files and every earlier
-/// month into its month file.
+/// Merge the runs of days before `today` into day files, finished weeks of
+/// `today`'s month into week files and every earlier month into its month file.
 pub fn compact(parts_root: &Path, today: Day) -> Result<()> {
     // Leftovers of an interrupted merge: already inside a coarser file.
     let all = list_parts(parts_root)?;
@@ -220,12 +247,31 @@ pub fn compact(parts_root: &Path, today: Day) -> Result<()> {
         let covered = all.iter().any(|(q, _)| {
             (q.year, q.month) == (p.year, p.month)
                 && q.span < p.span
+                && !matches!(q.span, Span::Hour(..))
                 && q.days().0 <= p.days().0
                 && p.days().1 <= q.days().1
         });
         if covered {
             fs::remove_file(path)?;
         }
+    }
+    let mut runs: Vec<(PartName, Vec<PathBuf>)> = Vec::new();
+    for (p, path) in list_parts(parts_root)? {
+        let Span::Hour(d, _) = p.span else { continue };
+        if (p.year, p.month, d) >= (today.year, today.month, today.day) {
+            continue;
+        }
+        let target = PartName {
+            span: Span::Day(d),
+            ..p
+        };
+        match runs.last_mut() {
+            Some((t, sources)) if *t == target => sources.push(path),
+            _ => runs.push((target, vec![path])),
+        }
+    }
+    for (target, sources) in runs {
+        merge_into(&target.path(parts_root), &sources)?;
     }
     let parts = list_parts(parts_root)?;
     let mut months: Vec<(i32, u32)> = parts.iter().map(|(p, _)| (p.year, p.month)).collect();
@@ -257,7 +303,7 @@ pub fn compact(parts_root: &Path, today: Day) -> Result<()> {
                 let in_week: Vec<PathBuf> = in_month()
                     .filter(|(p, _)| match p.span {
                         Span::Week(w) => w == week,
-                        Span::Day(d) => (first..=last).contains(&d),
+                        Span::Day(d) | Span::Hour(d, _) => (first..=last).contains(&d),
                         Span::Month => false,
                     })
                     .map(|(_, path)| path.clone())
@@ -273,20 +319,17 @@ pub fn compact(parts_root: &Path, today: Day) -> Result<()> {
     Ok(())
 }
 
-/// Last day covered by any part (`YYYY-MM-DD`).
-pub fn latest_day(parts_root: &Path) -> Result<Option<String>> {
-    Ok(list_parts(parts_root)?
-        .iter()
-        .map(|(p, _)| p.last_date())
-        .max())
+/// Stamp of the last published run.
+pub fn latest(parts_root: &Path) -> Result<Option<String>> {
+    Ok(list_parts(parts_root)?.iter().map(|(p, _)| p.stamp()).max())
 }
 
-/// Apply every part covering days after `after` (all if `None`) to `conn`'s
+/// Apply every part reaching past the stamp `after` (all if `None`) to `conn`'s
 /// galleries, oldest first. Returns how many were applied.
 pub fn apply_after(conn: &Connection, parts_root: &Path, after: Option<&str>) -> Result<usize> {
     let mut applied = 0;
     for (p, path) in list_parts(parts_root)? {
-        if after.is_some_and(|a| p.last_date().as_str() <= a) {
+        if after.is_some_and(|a| p.stamp().as_str() <= a) {
             continue;
         }
         conn.execute("ATTACH DATABASE ?1 AS src", [path.to_string_lossy()])?;
@@ -424,7 +467,12 @@ mod tests {
 
     #[test]
     fn part_names_round_trip() {
-        for n in ["2026-11.db", "2026-11-w4.db", "2026-02-28.db"] {
+        for n in [
+            "2026-11.db",
+            "2026-11-w4.db",
+            "2026-02-28.db",
+            "2026-11-19-h04.db",
+        ] {
             assert_eq!(PartName::parse(n).unwrap().file_name(), n);
         }
         for n in [
@@ -433,6 +481,8 @@ mod tests {
             "2026-11-1.db",
             "2026-11-32.db",
             "2026-11.db.new",
+            "2026-11-19-h24.db",
+            "2026-11-19-h4.db",
         ] {
             assert!(PartName::parse(n).is_none(), "{n}");
         }
@@ -511,6 +561,53 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// Runs stay separate during their day and become the day file on the
+    /// first run of a later day; a later run is not a leftover of an earlier one.
+    #[test]
+    fn runs_merge_into_their_day() {
+        let root = tmp("runs");
+        let d19 = day("2026-11-19");
+        make_part(
+            &root,
+            PartName::hour(d19, 4),
+            &[(1, 0, 1, "a")],
+            &[(9, 0, 1)],
+        );
+        make_part(&root, PartName::hour(d19, 20), &[], &[(1, 0, 2), (9, 1, 2)]);
+        make_part(
+            &root,
+            PartName::hour(day("2026-11-20"), 0),
+            &[(2, 0, 1, "b")],
+            &[],
+        );
+
+        compact(&root, d19).unwrap();
+        assert_eq!(
+            files(&root),
+            [
+                "2026-11-19-h04.db",
+                "2026-11-19-h20.db",
+                "2026-11-20-h00.db"
+            ]
+        );
+        assert_eq!(latest(&root).unwrap().as_deref(), Some("2026-11-20T00"));
+
+        for _ in 0..2 {
+            compact(&root, day("2026-11-20")).unwrap();
+            assert_eq!(files(&root), ["2026-11-19.db", "2026-11-20-h00.db"]);
+        }
+        assert_eq!(
+            read(&PartName::day(d19).path(&root)),
+            (vec![(1, 0, 2, "a".into())], vec![(9, 1, 2)])
+        );
+
+        // The 22nd closes week 3 (15-21), runs of the 20th included.
+        compact(&root, day("2026-11-22")).unwrap();
+        assert_eq!(files(&root), ["2026-11-w3.db"]);
+        assert_eq!(ids_in(&root, "2026-11-w3.db"), [1, 2]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn manifest_lists_parts_in_apply_order() {
         let repo = tmp("manifest");
@@ -572,23 +669,29 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Catch-up replays only parts that end after `after`, oldest first.
+    /// Catch-up replays only parts that reach past `after`, oldest first.
     #[test]
     fn apply_after_replays_newer_parts() {
         let root = tmp("apply");
         make_part(&root, PartName::day(day("2026-11-01")), &[], &[(5, 1, 2)]);
         make_part(
             &root,
-            PartName::day(day("2026-11-02")),
+            PartName::hour(day("2026-11-02"), 0),
+            &[],
+            &[(5, 1, 1)],
+        );
+        make_part(
+            &root,
+            PartName::hour(day("2026-11-02"), 4),
             &[(6, 1, 1, "n")],
             &[(5, 0, 1)],
         );
-        assert_eq!(latest_day(&root).unwrap().as_deref(), Some("2026-11-02"));
+        assert_eq!(latest(&root).unwrap().as_deref(), Some("2026-11-02T04"));
 
         let st = crate::state::open(&root.join("state.db")).unwrap();
         st.execute_batch("INSERT INTO galleries (id, kind, status) VALUES (5, 1, 2)")
             .unwrap();
-        assert_eq!(apply_after(&st, &root, Some("2026-11-01")).unwrap(), 1);
+        assert_eq!(apply_after(&st, &root, Some("2026-11-02T00")).unwrap(), 1);
         let rows: Vec<(i64, i64, i64)> = st
             .prepare("SELECT id, kind, status FROM galleries ORDER BY id")
             .unwrap()

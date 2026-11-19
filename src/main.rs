@@ -32,7 +32,7 @@ enum Cmd {
         #[arg(long)]
         state: PathBuf,
     },
-    /// Sync with nozomi, fetch new galleries, verify a batch, write the day's
+    /// Sync with nozomi, fetch new galleries, verify a batch, write the run's
     /// part, compact parts and rewrite manifest.json.
     Daily {
         #[arg(long)]
@@ -43,15 +43,18 @@ enum Cmd {
         /// Run date, YYYY-MM-DD (KST in the workflow).
         #[arg(long)]
         date: Day,
+        /// Hour the run started, 0-23 (KST in the workflow).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..24))]
+        hour: u32,
         /// Requests in flight.
         #[arg(long, default_value_t = 16)]
         concurrency: usize,
         /// Galleries verified per run while never-checked Forbidden ones remain
-        /// (~127/s on a GitHub runner at concurrency 16: ~11 min).
-        #[arg(long, default_value_t = 80_000)]
+        /// (~127/s on a GitHub runner at concurrency 16).
+        #[arg(long, default_value_t = 10_000)]
         suspect_budget: usize,
-        /// Galleries re-verified per run afterwards (~1.4M over 30 days).
-        #[arg(long, default_value_t = 45_000)]
+        /// Galleries re-verified per run afterwards (6 runs a day: ~1.4M over 23 days).
+        #[arg(long, default_value_t = 10_000)]
         rotate_budget: usize,
     },
     /// Write the client base snapshot and record it in base.json + manifest.json.
@@ -77,6 +80,7 @@ async fn main() -> Result<()> {
             state,
             repo,
             date,
+            hour,
             concurrency,
             suspect_budget,
             rotate_budget,
@@ -85,6 +89,7 @@ async fn main() -> Result<()> {
                 &state,
                 &repo,
                 date,
+                hour,
                 concurrency,
                 suspect_budget,
                 rotate_budget,
@@ -99,6 +104,7 @@ async fn daily(
     state_path: &Path,
     repo: &Path,
     date: Day,
+    hour: u32,
     concurrency: usize,
     suspect_budget: usize,
     rotate_budget: usize,
@@ -110,17 +116,21 @@ async fn daily(
             state_path.display()
         );
     }
-    // Published parts are never rewritten, so each day runs once.
+    // Published parts are never rewritten, so each hour runs once.
+    let run = parts::PartName::hour(date, hour);
+    let stamp = run.stamp();
     let parts_root = repo.join(parts::PARTS_DIR);
-    let latest = parts::latest_day(&parts_root)?;
-    if latest.as_deref() >= Some(date.to_string().as_str()) {
+    let latest = parts::latest(&parts_root)?;
+    if latest.as_deref() >= Some(stamp.as_str()) {
         bail!(
-            "{date} is not after the last published day {}",
+            "{stamp} is not after the last published run {}",
             latest.unwrap_or_default()
         );
     }
     // A run whose parts were pushed but whose state upload failed: replay them.
-    let last_run = state::meta(&conn, "last_run")?;
+    // (`last_run` was a bare date while there was one run a day.)
+    let last_run =
+        state::meta(&conn, "last_run")?.map(|s| if s.contains('T') { s } else { s + "T23" });
     if latest > last_run {
         let n = parts::apply_after(&conn, &parts_root, last_run.as_deref())?;
         state::set_meta(&conn, "last_run", latest.as_deref().unwrap_or_default())?;
@@ -168,8 +178,8 @@ async fn daily(
     let changed = state::apply_verdicts(&mut conn, &verdicts, now)?;
     eprintln!("verify: {total} checked, {changed} status changes, {unknown} undecided");
 
-    state::set_meta(&conn, "last_run", &date.to_string())?;
-    let part = parts::write_day(&conn, &parts_root, date)?;
+    state::set_meta(&conn, "last_run", &stamp)?;
+    let part = parts::write_part(&conn, &parts_root, run)?;
     eprintln!("wrote {}", part.display());
     parts::compact(&parts_root, date)?;
     parts::write_manifest(repo)
@@ -177,7 +187,8 @@ async fn daily(
 
 fn export_base(state_path: &Path, out: &Path, repo: &Path) -> Result<()> {
     let conn = state::open(state_path)?;
-    let through = state::meta(&conn, "last_run")?.context("no daily run recorded yet")?;
+    let last_run = state::meta(&conn, "last_run")?.context("no daily run recorded yet")?;
+    let through = last_run.get(..10).context("last_run")?;
     state::export_base(&conn, out)?;
     let mut hasher = Sha256::new();
     let size = std::io::copy(&mut std::fs::File::open(out)?, &mut hasher)?;
@@ -189,7 +200,7 @@ fn export_base(state_path: &Path, out: &Path, repo: &Path) -> Result<()> {
     // Versioned name: replacing the asset never mismatches a live base.json.
     let base = serde_json::json!({
         "release": "base",
-        "asset": format!("base-{through}.db.zst"),
+        "asset": format!("base-{last_run}.db.zst"),
         "through": through,
         "size": size,
         "sha256": sha256,

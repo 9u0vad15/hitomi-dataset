@@ -2,7 +2,7 @@ name: daily
 
 on:
   schedule:
-    - cron: "17 20 * * *" # 05:17 KST; GitHub delays top-of-hour schedules (hours under load)
+    - cron: "17 */4 * * *" # every 4 hours; GitHub delays top-of-hour schedules (hours under load)
   workflow_dispatch:
 
 permissions:
@@ -21,18 +21,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Days are KST dates: the 05:17 KST schedule often starts hours late, and a
-      # UTC date would then land on the next day and skip it. A day already
-      # published (e.g. a manual run earlier that KST day) ends
-      # the job as a success; the remaining steps are skipped.
+      # A run is named by the KST date and hour it starts at (schedules often
+      # start hours late). An hour already published (e.g. a manual run earlier
+      # that hour; a day or coarser file counts as its whole last day) ends the
+      # job as a success; the remaining steps are skipped.
       - name: Check date
         id: day
         run: |
-          today=$(TZ=Asia/Seoul date +%F)
+          read -r today hour < <(TZ=Asia/Seoul date '+%F %H')
           echo "today=$today" >> "$GITHUB_OUTPUT"
-          last=$(jq -r '.parts[-1].last // ""' manifest.json 2>/dev/null || true)
-          if [ "$last" = "$today" ]; then
-            echo "$today already published; skipping"
+          echo "hour=$hour" >> "$GITHUB_OUTPUT"
+          last=$(jq -r '.parts[-1] | .last + "T" + ((.path | capture("-h(?<h>[0-9]{2})\\.db$").h) // "23")' manifest.json 2>/dev/null || true)
+          if [[ ! "${today}T$hour" > "$last" ]]; then
+            echo "${today}T$hour already published (last: $last); skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -51,7 +52,7 @@ jobs:
 
       - name: Update
         if: steps.day.outputs.skip != 'true'
-        run: ./target/release/hitomi-dataset daily --state work/state.db --repo . --date "${{ steps.day.outputs.today }}"
+        run: ./target/release/hitomi-dataset daily --state work/state.db --repo . --date "${{ steps.day.outputs.today }}" --hour "${{ steps.day.outputs.hour }}"
 
       # Parts first: if the state upload below fails, the next run replays the
       # pushed parts onto the old state before doing its own work.
@@ -61,7 +62,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data manifest.json
-          git diff --cached --quiet || git commit -m "data: ${{ steps.day.outputs.today }}"
+          git diff --cached --quiet || git commit -m "data: ${{ steps.day.outputs.today }}T${{ steps.day.outputs.hour }}"
           git push
 
       - name: Upload state
