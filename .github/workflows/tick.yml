@@ -1,0 +1,47 @@
+name: tick
+
+# GitHub starts scheduled runs late and drops some, so a sparse schedule misses
+# its hours. This one fires often and starts `daily` once per 4-hour slot
+# (KST 00, 04, 08, 12, 16, 20), on the first tick that arrives in the slot.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  tick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # The last published run comes from manifest.json (a day or coarser file
+      # counts as its whole last day). A daily run still queued or running has
+      # not published yet, so it is checked separately.
+      - name: Start daily for an unpublished slot
+        run: |
+          manifest=$(gh api "repos/$GH_REPO/contents/manifest.json" -H 'Accept: application/vnd.github.raw')
+          last=$(jq -r '.parts[-1] | .last + "T" + ((.path | capture("-h(?<h>[0-9]{2})\\.db$").h) // "23")' <<<"$manifest" 2>/dev/null || true)
+          read -r today hour < <(TZ=Asia/Seoul date '+%F %H')
+          slot=$(printf '%sT%02d' "$today" $((10#$hour / 4 * 4)))
+          busy=$(gh run list --workflow daily.yml --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [[ ! "$last" < "$slot" ]]; then
+            echo "slot $slot already published (last: $last)"
+          elif [ "$busy" != 0 ]; then
+            echo "slot $slot: daily is already queued or running"
+          else
+            echo "slot $slot: starting daily (last: $last)"
+            gh workflow run daily.yml --ref "$GITHUB_REF_NAME"
+          fi
+
+      # Keeps the Actions list readable; failed ticks stay.
+      - name: Delete earlier successful ticks
+        run: |
+          gh run list --workflow tick.yml --status success --limit 100 --json databaseId --jq '.[].databaseId' |
+            while read -r id; do gh run delete "$id"; done

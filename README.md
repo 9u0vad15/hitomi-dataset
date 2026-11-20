@@ -47,7 +47,12 @@ Each part has `galleries` (full rows: new galleries) and `states`
    part is harmless, so a merged day/week/month file may overlap parts already
    applied.
 
-## Run (`.github/workflows/daily.yml`, every 4 hours; GitHub may start it hours late)
+## Run (`.github/workflows/daily.yml`, every 4 hours)
+
+GitHub starts scheduled workflows late and drops some, so `tick.yml` fires
+every 5 minutes and starts `daily` on the first tick of each 4-hour slot
+(KST 00, 04, 08, 12, 16, 20) that has no published run yet. It deletes its own
+earlier successful runs from the Actions list.
 
 A run is named by the KST date and hour it starts at. Published parts are never
 rewritten: a run whose hour is not after the last published run fails; the

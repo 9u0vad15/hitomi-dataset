@@ -1,8 +1,7 @@
 name: daily
 
+# Started by tick.yml once per 4-hour slot, or by hand.
 on:
-  schedule:
-    - cron: "17 */4 * * *" # every 4 hours; GitHub delays top-of-hour schedules (hours under load)
   workflow_dispatch:
 
 permissions:
@@ -21,8 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # A run is named by the KST date and hour it starts at (schedules often
-      # start hours late). An hour already published (e.g. a manual run earlier
+      # A run is named by the KST date and hour it starts at. An hour already published (e.g. a manual run earlier
       # that hour; a day or coarser file counts as its whole last day) ends the
       # job as a success; the remaining steps are skipped.
       - name: Check date
