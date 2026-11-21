@@ -16,66 +16,17 @@
     },
     {
       "first": "2026-11-15",
-      "last": "2026-11-15",
-      "path": "data/hitomi/2026/2026-11-15.db",
-      "sha256": "35a19ede2746d7d1c38b43bf81a9405cafae5aeac70e683e2759f40341960dc9",
-      "size": 1183744
-    },
-    {
-      "first": "2026-11-16",
-      "last": "2026-11-16",
-      "path": "data/hitomi/2026/2026-11-16.db",
-      "sha256": "b0c5f9cb3370068233ff2ea8cd6c0f6dff583814ab756777ca055db4e64b20b9",
-      "size": 1024000
-    },
-    {
-      "first": "2026-11-17",
-      "last": "2026-11-17",
-      "path": "data/hitomi/2026/2026-11-17.db",
-      "sha256": "37538457ac2a91181bccd619c40280d5f0a1af8e9cf21c583f2c98a536b3f35e",
-      "size": 1105920
-    },
-    {
-      "first": "2026-11-18",
-      "last": "2026-11-18",
-      "path": "data/hitomi/2026/2026-11-18.db",
-      "sha256": "111d01e7e590fb7d41adc29de7c9f6ad649474763bbdab6f919d94f35c256f20",
-      "size": 1114112
-    },
-    {
-      "first": "2026-11-19",
-      "last": "2026-11-19",
-      "path": "data/hitomi/2026/2026-11-19.db",
-      "sha256": "4b38b7d936170b4601f2b4b0ef499aee8b246cef965fd937563d36419b1b272a",
-      "size": 1073152
-    },
-    {
-      "first": "2026-11-20",
-      "last": "2026-11-20",
-      "path": "data/hitomi/2026/2026-11-20.db",
-      "sha256": "20e635075d9de0e918652c08f3f11e477fb6c8b687d14c9fa19a96e44cb7ff4a",
-      "size": 618496
-    },
-    {
-      "first": "2026-11-21",
       "last": "2026-11-21",
-      "path": "data/hitomi/2026/2026-11-21-h05.db",
-      "sha256": "6a19eb55536af10ccaa544155a2d05b6aa059dea5810e1ad8785fe11bea62021",
-      "size": 204800
+      "path": "data/hitomi/2026/2026-11-w3.db",
+      "sha256": "6159d8b7204a49b0414d8d99ae65c19e3d75f7b19e173442db56bcccd11fbb5f",
+      "size": 6582272
     },
     {
-      "first": "2026-11-21",
-      "last": "2026-11-21",
-      "path": "data/hitomi/2026/2026-11-21-h10.db",
-      "sha256": "c63245d915658a8aa7e8bc591f88663bdd366cd5c6bea4caf5950a04b240b966",
-      "size": 172032
-    },
-    {
-      "first": "2026-11-21",
-      "last": "2026-11-21",
-      "path": "data/hitomi/2026/2026-11-21-h17.db",
-      "sha256": "04b05270b3955c5c91cd1453462db635223375a9ceb4f389110141be484f3017",
-      "size": 200704
+      "first": "2026-11-22",
+      "last": "2026-11-22",
+      "path": "data/hitomi/2026/2026-11-22-h01.db",
+      "sha256": "2b09ae51aa1c946dc6d94bac3b5ab80a19bc36f7c0e06cefd67e18426c4fe349",
+      "size": 221184
     }
   ]
 }
