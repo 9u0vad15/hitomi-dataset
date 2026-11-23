@@ -41,6 +41,13 @@
       "path": "data/hitomi/2026/2026-11-23-h07.db",
       "sha256": "bf02af989d73b99b2234d5dc715367d9a9f774a00efa48386115607a5c06d401",
       "size": 188416
+    },
+    {
+      "first": "2026-11-23",
+      "last": "2026-11-23",
+      "path": "data/hitomi/2026/2026-11-23-h11.db",
+      "sha256": "936d0b8874bea4911c1d36e8fc71216c35f931ecf64a9b893a29b042bab2dca4",
+      "size": 167936
     }
   ]
 }
