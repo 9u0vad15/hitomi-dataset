@@ -59,23 +59,16 @@
     {
       "first": "2026-11-27",
       "last": "2026-11-27",
-      "path": "data/hitomi/2026/2026-11-27-h06.db",
-      "sha256": "75ea069608380c3fc98409c898ef95a373d48d7bd9087b43bfdb5e844fd4b28e",
+      "path": "data/hitomi/2026/2026-11-27.db",
+      "sha256": "2134b873a9aa3d00ae55302db879fe9c73ef2c9971b5641fee3b0b07bbe7c862",
+      "size": 544768
+    },
+    {
+      "first": "2026-11-28",
+      "last": "2026-11-28",
+      "path": "data/hitomi/2026/2026-11-28-h07.db",
+      "sha256": "a5cd85fec452103603c804b50835fc81850c2a4b443f799f94345454c4d1f51f",
       "size": 221184
-    },
-    {
-      "first": "2026-11-27",
-      "last": "2026-11-27",
-      "path": "data/hitomi/2026/2026-11-27-h12.db",
-      "sha256": "417e452ba59d16bb71a81e8235db121d10b3ca57b3c9a687999e3bf9146ed5cc",
-      "size": 172032
-    },
-    {
-      "first": "2026-11-27",
-      "last": "2026-11-27",
-      "path": "data/hitomi/2026/2026-11-27-h22.db",
-      "sha256": "ec401c7c5b413cd7105eaa55b451c5b9d4c5eacf1bc593b00d05b238e20a0e30",
-      "size": 188416
     }
   ]
 }
